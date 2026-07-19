@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Digit Predictor</title>
+<style>
+  body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; margin-top: 40px; background: #111; color: #eee; }
+  canvas { border: 2px solid #eee; background: black; touch-action: none; cursor: crosshair; }
+  button { margin: 10px 6px; padding: 10px 18px; font-size: 15px; cursor: pointer; }
+  #result { font-size: 28px; margin-top: 10px; }
+  #apiUrl { width: 320px; padding: 6px; margin-bottom: 10px; }
+</style>
+</head>
+<body>
+
+<h2>Draw a digit (0-9)</h2>
+<input id="apiUrl" value="http://localhost:8000/predict" placeholder="Your API URL">
+<br>
+<canvas id="canvas" width="280" height="280"></canvas>
+<br>
+<button onclick="clearCanvas()">Clear</button>
+<button onclick="predict()">Predict</button>
+<div id="result">Prediction: —</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+ctx.fillStyle = 'black';
+ctx.fillRect(0, 0, canvas.width, canvas.height);
+ctx.strokeStyle = 'white';
+ctx.lineWidth = 16;
+ctx.lineCap = 'round';
+ctx.lineJoin = 'round';
+
+let drawing = false;
+
+function getPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+  return { x: clientX - rect.left, y: clientY - rect.top };
+}
+
+function startDraw(e) {
+  drawing = true;
+  const pos = getPos(e);
+  ctx.beginPath();
+  ctx.moveTo(pos.x, pos.y);
+  e.preventDefault();
+}
+
+function draw(e) {
+  if (!drawing) return;
+  const pos = getPos(e);
+  ctx.lineTo(pos.x, pos.y);
+  ctx.stroke();
+  e.preventDefault();
+}
+
+function stopDraw() { drawing = false; }
+
+canvas.addEventListener('mousedown', startDraw);
+canvas.addEventListener('mousemove', draw);
+canvas.addEventListener('mouseup', stopDraw);
+canvas.addEventListener('mouseleave', stopDraw);
+canvas.addEventListener('touchstart', startDraw);
+canvas.addEventListener('touchmove', draw);
+canvas.addEventListener('touchend', stopDraw);
+
+function clearCanvas() {
+  ctx.fillStyle = 'black';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  document.getElementById('result').innerText = 'Prediction: —';
+}
+
+// Convert the canvas drawing to a PNG blob (backend does its own resize/grayscale via PIL)
+function canvasToBlob() {
+  return new Promise(resolve => canvas.toBlob(blob => resolve(blob), 'image/png'));
+}
+
+async function predict() {
+  const resultDiv = document.getElementById('result');
+  resultDiv.innerText = 'Predicting...';
+  const url = document.getElementById('apiUrl').value;
+
+  try {
+    const blob = await canvasToBlob();
+    const formData = new FormData();
+    formData.append('file', blob, 'digit.png');
+
+    const res = await fetch(url, {
+      method: 'POST',
+      body: formData
+    });
+    if (!res.ok) throw new Error('Status ' + res.status);
+    const data = await res.json();
+    resultDiv.innerText = `Prediction: ${data.predicted_digit} (confidence: ${data.confidence}%)`;
+  } catch (err) {
+    resultDiv.innerText = 'Error: ' + err.message;
+  }
+}
+</script>
+
+</body>
+</html>
